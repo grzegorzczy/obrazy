@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 import numpy as np
+import cv2
 
 class Filter(metaclass=ABCMeta):
     def __init__(self, c=0):
@@ -43,44 +44,38 @@ class CircleFilter(Filter):
                 if (i - center[1]) ** 2 + (j - center[0]) ** 2 < radius ** 2:
                     arr[i, j] = num
 
-class LineFilter(Filter):
-    def __init__(self, width, height, c=0):
-        super().__init__(c)
-        self.width = width
-        self.height = height
-        self.mult = np.ones((height, width))
-
-    def addLine(self, x1, y1, x2, y2, pixelWidth=1):
-        steep = abs(y2 - y1) > abs(x2 - x1)
-        if steep:
-            x1, y1 = y1, x1
-            x2, y2 = y2, x2
-        
-        if x1 > x2:
-            x1, x2 = x2, x1
-            y1, y2 = y2, y1
-        
-        dx = x2 - x1
-        dy = abs(y2 - y1)
-        error = dx / 2.0
-        ystep = 1 if y1 < y2 else -1
-        y = y1
-
-        for x in range(x1, x2 + 1):
-            coord = (y, x) if steep else (x, y)
-            self.drawPixel(coord, pixelWidth)
-            error -= dy
-            if error < 0:
-                y += ystep
-                error += dx
-
-    def drawPixel(self, coord, pixelWidth):
-        x, y = coord
-        for dx in range(-pixelWidth // 2, pixelWidth // 2 + 1):
-            for dy in range(-pixelWidth // 2, pixelWidth // 2 + 1):
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < self.width and 0 <= ny < self.height:
-                    self.mult[ny, nx] = 0
+class CannyFilter:
+    def __init__(self, threshold1, threshold2):
+        self.threshold1 = threshold1
+        self.threshold2 = threshold2
 
     def modify(self, image):
-        return image * self.mult
+        edges = cv2.Canny(image, self.threshold1, self.threshold2)
+        return edges
+
+
+class ScharrFilter(Filter):
+    def modify(self, image):
+        gx = cv2.Scharr(image, cv2.CV_64F, 1, 0)
+        gy = cv2.Scharr(image, cv2.CV_64F, 0, 1)
+        g = np.hypot(gx, gy)
+        return np.abs(g)
+
+    
+class PrewittFilter(Filter):
+    def modify(self, image):
+        kernelx = np.array([[1, 0, -1], [1, 0, -1], [1, 0, -1]])
+        kernely = np.array([[1, 1, 1], [0, 0, 0], [-1, -1, -1]])
+        gx = cv2.filter2D(image, -1, kernelx)
+        gy = cv2.filter2D(image, -1, kernely)
+        g = np.hypot(gx, gy)
+        return np.abs(g)
+
+class SobelFilter(Filter):
+    def modify(self, image):
+        sobelx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
+        sobely = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3)
+        sobel = np.sqrt(sobelx**2 + sobely**2)
+        sobel = np.uint8(sobel / np.max(sobel) * 255)
+        return sobel
+    
